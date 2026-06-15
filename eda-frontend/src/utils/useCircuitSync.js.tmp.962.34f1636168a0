@@ -1,0 +1,176 @@
+import { useEffect, useRef } from 'react'
+import { useSelector } from 'react-redux'
+import {
+  Save,
+  renderGalleryXML,
+  registerChangeListener,
+  setViewerMode
+} from '../components/SchematicEditor/Helper/ToolbarTools'
+
+// ─── tuneable constants ────────────────────────────────────────────────────────
+
+// How long after the last graph change before broadcasting.
+// Short enough to feel live; long enough to avoid flooding during drags.
+const DEBOUNCE_MS = 300
+
+const PING_INTERVAL_MS = 25000 // keepalive — same as usePresence
+const RECONNECT_BASE_MS = 2000
+const RECONNECT_MAX_MS = 30000
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function buildSyncWsUrl (saveId, token) {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const base = `${proto}://${window.location.host}/ws/sync/${saveId}/`
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base
+}
+
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 2 — Live Shared Viewing.
+ *
+ * Editor (isEditor = true):
+ *   • Listens to mxGraph model changes via registerChangeListener.
+ *   • Debounces at DEBOUNCE_MS, then serialises the graph with Save() and
+ *     sends { type: "PROJECT_SNAPSHOT", xml } over the sync WebSocket.
+ *   • Enables graph editing (setViewerMode(false)).
+ *
+ * Viewer (isEditor = false):
+ *   • Receives PROJECT_SNAPSHOT messages and calls renderGalleryXML(xml).
+ *     View transform (zoom / pan) is preserved across redraws — mxGraph does
+ *     not reset graph.view.scale or graph.view.translate on removeCells.
+ *   • Disables graph editing (setViewerMode(true)) while keeping pan active.
+ *
+ * Failure model: if the WebSocket cannot connect or drops, editing and
+ * viewing continue without sync — all existing functionality is unaffected.
+ * Reconnection uses exponential back-off up to RECONNECT_MAX_MS.
+ *
+ * Phase 3 note: incremental events (COMPONENT_ADDED, COMPONENT_MOVED, …) will
+ * be dispatched via the same /ws/sync/<saveId>/ channel and handled in the
+ * onmessage switch below without any structural changes to this hook.
+ */
+export function useCircuitSync (saveId, isEditor) {
+  const token = useSelector((state) => state.authReducer.token)
+
+  // Refs hold mutable state that must not trigger re-renders
+  const wsRef = useRef(null)
+  const pingRef = useRef(null)
+  const reconnectRef = useRef(null)
+  const debounceRef = useRef(null)
+  const delayRef = useRef(RECONNECT_BASE_MS)
+  const activeRef = useRef(false) // false → cleanup running, suppress reconnect
+  const unregRef = useRef(null) // cleanup fn returned by registerChangeListener
+
+  useEffect(() => {
+    if (!saveId) return
+
+    activeRef.current = true
+
+    // Apply role immediately — graph must be initialised (LoadGrid must have run)
+    setViewerMode(!isEditor)
+
+    // ── WebSocket teardown ────────────────────────────────────────────────────
+    function teardownWs () {
+      clearInterval(pingRef.current)
+      clearTimeout(reconnectRef.current)
+      clearTimeout(debounceRef.current)
+
+      if (unregRef.current) {
+        unregRef.current()
+        unregRef.current = null
+      }
+
+      if (wsRef.current) {
+        wsRef.current.onopen = null
+        wsRef.current.onmessage = null
+        wsRef.current.onerror = null
+        wsRef.current.onclose = null
+        if (wsRef.current.readyState < WebSocket.CLOSING) {
+          wsRef.current.close()
+        }
+        wsRef.current = null
+      }
+    }
+
+    // ── WebSocket connect ─────────────────────────────────────────────────────
+    function connect () {
+      if (!activeRef.current) return
+      teardownWs()
+
+      const socket = new WebSocket(buildSyncWsUrl(saveId, token))
+      wsRef.current = socket
+
+      socket.onopen = () => {
+        if (!activeRef.current) { socket.close(); return }
+        delayRef.current = RECONNECT_BASE_MS
+
+        if (isEditor) {
+          // Register change listener — fires on every model mutation
+          unregRef.current = registerChangeListener(() => {
+            clearTimeout(debounceRef.current)
+            debounceRef.current = setTimeout(() => {
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                const xml = Save()
+                wsRef.current.send(JSON.stringify({ type: 'PROJECT_SNAPSHOT', xml }))
+              }
+            }, DEBOUNCE_MS)
+          })
+        }
+
+        pingRef.current = setInterval(() => {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'PING' }))
+          }
+        }, PING_INTERVAL_MS)
+      }
+
+      socket.onmessage = (evt) => {
+        let msg
+        try { msg = JSON.parse(evt.data) } catch (_) { return }
+
+        switch (msg.type) {
+          case 'PROJECT_SNAPSHOT':
+            // Only viewers apply incoming snapshots — editors ignore their own echo
+            if (!isEditor) {
+              renderGalleryXML(msg.xml)
+            }
+            break
+
+            // Phase 3 incremental events (COMPONENT_ADDED, COMPONENT_MOVED, etc.)
+            // will be handled here with additional case branches.
+
+          default:
+            break // PONG and unknown types ignored
+        }
+      }
+
+      socket.onerror = () => {
+        // onclose always fires after onerror; reconnect logic lives there
+      }
+
+      socket.onclose = () => {
+        clearInterval(pingRef.current)
+        if (unregRef.current) {
+          unregRef.current()
+          unregRef.current = null
+        }
+        if (!activeRef.current) return
+        reconnectRef.current = setTimeout(() => {
+          delayRef.current = Math.min(delayRef.current * 2, RECONNECT_MAX_MS)
+          connect()
+        }, delayRef.current)
+      }
+    }
+
+    connect()
+
+    return () => {
+      activeRef.current = false
+      teardownWs()
+      // Restore full editor mode on unmount so a remount starts clean
+      setViewerMode(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveId, isEditor, token])
+}

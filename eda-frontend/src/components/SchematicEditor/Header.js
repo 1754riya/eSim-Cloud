@@ -419,7 +419,7 @@ function Header ({ gridRef }) {
               {shared === true
                 ? <input
                   ref={textAreaRef}
-                  value={`${window.location.protocol}\\\\${window.location.host}/eda/#/editor?id=${schSave.details.save_id}`}
+                  value={`${window.location.protocol}//${window.location.host}/eda/#/editor?id=${schSave.details.save_id}&version=${schSave.details.version}&branch=${schSave.details.branch}`}
                   readOnly
                 />
                 : <> Turn On sharing </>

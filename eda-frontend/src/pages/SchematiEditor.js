@@ -13,9 +13,13 @@ import RightSidebar from '../components/SchematicEditor/RightSidebar'
 import PropertiesSidebar from '../components/SchematicEditor/PropertiesSidebar'
 import LoadGrid from '../components/SchematicEditor/Helper/ComponentDrag.js'
 import ComponentProperties from '../components/SchematicEditor/ComponentProperties'
+import PresencePanel from '../components/SchematicEditor/PresencePanel'
 import '../components/SchematicEditor/Helper/SchematicEditor.css'
 import { fetchSchematic, fetchGallerySchematic } from '../redux/actions/index'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import { usePresence } from '../utils/usePresence'
+import { useCircuitSync } from '../utils/useCircuitSync'
+import { useIsEditor } from '../utils/useIsEditor'
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -35,6 +39,12 @@ export default function SchematiEditor (props) {
   const dispatch = useDispatch()
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [ltiSimResult, setLtiSimResult] = React.useState(false)
+
+  const saveId = useSelector(state => state.saveSchematicReducer.details.save_id)
+  const isEditor = useIsEditor()
+
+  usePresence(saveId)
+  useCircuitSync(saveId, isEditor)
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
@@ -95,6 +105,7 @@ export default function SchematiEditor (props) {
       {/* Schematic editor Right side pane */}
       <RightSidebar mobileOpen={mobileOpen} mobileClose={handleDrawerToggle}>
         <PropertiesSidebar gridRef={gridRef} outlineRef={outlineRef} />
+        <PresencePanel />
       </RightSidebar>
       <ComponentProperties/>
     </div>

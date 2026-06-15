@@ -1063,6 +1063,42 @@ export function renderGalleryXML(xml) {
   var xmlDoc = mxUtils.parseXml(xml)
   parseXmlToGraph(xmlDoc, graph)
 }
+
+/**
+ * Register a callback that fires whenever the graph model changes.
+ * Returns an unregister function — call it on cleanup to avoid leaks.
+ * Returns a no-op if called before the graph is initialised.
+ *
+ * Used by Phase 2 live sync to debounce-and-broadcast XML snapshots.
+ * Phase 3 incremental events can register additional listeners the same way.
+ */
+export function registerChangeListener(callback) {
+  if (!graph) return function () {}
+  var listener = function () { callback() }
+  graph.getModel().addListener(mxEvent.CHANGE, listener)
+  return function unregister() {
+    graph.getModel().removeListener(listener)
+  }
+}
+
+/**
+ * Enable or disable viewer mode on the graph.
+ *
+ * Viewer mode (isViewer = true):
+ *   - Disables cell selection, moving, connecting, and deleting
+ *   - Keeps panning active so the viewer can navigate
+ *   - Zoom toolbar buttons continue to work (they call graph.zoomIn/Out directly)
+ *   - Keyboard shortcuts that call graph.isEnabled() are blocked automatically
+ *
+ * Editor mode (isViewer = false): restores full editing capability.
+ */
+export function setViewerMode(isViewer) {
+  if (!graph) return
+  graph.setEnabled(!isViewer)
+  if (isViewer) {
+    graph.setPanning(true)
+  }
+}
 // Certain Variables need to be Defined before Saving the Circuit, XML Wire Connections does that 
 function XMLWireConnections() {
   var erc = true

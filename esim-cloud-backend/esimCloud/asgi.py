@@ -1,16 +1,16 @@
-"""
-ASGI config for esimCloud project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/3.0/howto/deployment/asgi/
-"""
-
 import os
+import django
 
-from django.core.asgi import get_asgi_application
+from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'esimCloud.settings')
+django.setup()
 
-application = get_asgi_application()
+from collaborationAPI.routing import websocket_urlpatterns  # noqa: E402
+
+application = ProtocolTypeRouter({
+    'websocket': AuthMiddlewareStack(
+        URLRouter(websocket_urlpatterns)
+    ),
+})

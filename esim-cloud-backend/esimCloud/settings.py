@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'social_django',
     'inline_actions',
     'djoser',
+    'channels',
     'simulationAPI',
     'authAPI',
     'libAPI',
@@ -52,6 +53,7 @@ INSTALLED_APPS = [
     'arduinoAPI',
     'workflowAPI',
     'ltiAPI',
+    'collaborationAPI',
 ]
 
 MIDDLEWARE = [
@@ -85,6 +87,18 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'esimCloud.wsgi.application'
+ASGI_APPLICATION = 'esimCloud.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.environ.get('REDIS_URL', 'redis://redis:6379')],
+        },
+    },
+}
+
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379')
 
 AUTH_USER_MODEL = 'authAPI.User'
 # Database config Defaults to sqlite3 if not provided in environment files

@@ -9,6 +9,7 @@ import dashboardReducer from './dashboardReducer'
 import accountReducer from './accountReducer'
 import projectReducer from './projectReducer'
 import galleryReducer from './galleryReducer'
+import presenceReducer from './presenceReducer'
 export default combineReducers({
   schematicEditorReducer,
   componentPropertiesReducer,
@@ -19,5 +20,6 @@ export default combineReducers({
   dashboardReducer,
   accountReducer,
   projectReducer,
-  galleryReducer
+  galleryReducer,
+  presenceReducer
 })

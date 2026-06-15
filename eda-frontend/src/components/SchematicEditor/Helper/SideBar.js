@@ -28,6 +28,9 @@ export function AddComponent (component, imgref) {
     return null
   }
   var funct = function (graph, evt, target, x, y) {
+    // Viewer mode: editing is disabled — reject component drops silently
+    if (!graph.isEnabled()) return
+
     var parent = graph.getDefaultParent()
     var model = graph.getModel()
 
